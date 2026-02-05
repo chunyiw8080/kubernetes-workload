@@ -1,0 +1,77 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: benchmark-ab-config
+  namespace: benchmark
+data:
+  # 目标服务URL
+  TARGET_URL: "http://target-nginx-svc.default.svc.cluster.local/"
+  # 总请求数
+  TOTAL_REQUESTS: "500000"
+  # 并发数
+  CONCURRENCY: "50"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: benchmark-ab-script
+  namespace: benchmark
+data:
+  run.sh: |
+    #!/bin/sh
+
+    set -euo pipefail 
+    trap "echo 'Receive termination signal'; exit 0" TERM INT
+
+    ab -n ${TOTAL_REQUESTS} -c ${CONCURRENCY} ${TARGET_URL}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: benchmark-ab-job
+  namespace: benchmark
+spec:
+  completions: 2
+  parallelism: 2
+  backoffLimit: 0
+
+  # ⭐ 最大运行时间
+  # activeDeadlineSeconds: 300
+
+  template:
+    metadata:
+      labels:
+        app: benchmark-ab-job
+    spec:
+      restartPolicy: Never
+      # 通过拓扑约束，确保Pod分布在不同节点上
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: benchmark-ab-job
+            topologyKey: kubernetes.io/hostname
+
+      containers:
+      - name: benchmark-ab-job
+        image: httpd:2.4-alpine
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/sh", "/scripts/run.sh"]
+        envFrom:
+        - configMapRef:
+            name: benchmark-ab-config
+        volumeMounts:
+        - name: script-volume
+          mountPath: /scripts
+        resources:
+          requests:
+            cpu: 500m
+          limits:
+            cpu: 1
+      volumes:
+      - name: script-volume
+        configMap:
+          name: benchmark-ab-script
+          defaultMode: 0755

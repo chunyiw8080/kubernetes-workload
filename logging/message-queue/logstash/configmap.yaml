@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-k8s-config
+  namespace: logging
+data:
+  containers.conf: |
+    input {
+      kafka {
+        codec => "json"
+        topics => ["logging"]
+        bootstrap_servers => ["kafka.logging.svc.cluster.local:9092"]
+        type => "logging"
+      }
+      kafka {
+        codec => "json"
+        topics => ["kube-system"]
+        bootstrap_servers => ["kafka.logging.svc.cluster.local:9092"]
+        type => "kube-system"
+      }
+      kafka {
+        codec => "json"
+        topics => ["monitor"]
+        bootstrap_servers => ["kafka.logging.svc.cluster.local:9092"]
+        type => "monitor"
+      }
+    }
+
+    output {
+      if [type] == "logging" {
+        elasticsearch {
+          hosts => ["elasticsearch.logging.svc.cluster.local:9200"]
+          index => "logging-%{+YYYY.MM.dd}"
+        }
+      }
+      if [type] == "kube-system" {
+        elasticsearch {
+          hosts => ["elasticsearch.logging.svc.cluster.local:9200"]
+          index => "kube-system-%{+YYYY.MM.dd}"
+        }
+      }
+      if [type] == "monitor" {
+        elasticsearch {
+          hosts => ["elasticsearch.logging.svc.cluster.local:9200"]
+          index => "monitor-%{+YYYY.MM.dd}"
+        }
+      }
+    }

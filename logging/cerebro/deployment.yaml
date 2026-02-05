@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: cerebro
+  name: cerebro
+  namespace: logging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cerebro
+  template:
+    metadata:
+      name: cerebro
+      labels:
+        app: cerebro
+    spec:
+      containers:
+      - image: lmenezes/cerebro:0.8.5
+        imagePullPolicy: IfNotPresent
+        name: cerebro
+        resources:
+          limits:
+            cpu: 1
+            memory: 1Gi
+          requests:
+            cpu: 0.25
+            memory: 500Mi

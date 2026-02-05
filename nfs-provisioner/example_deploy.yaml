@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-nfs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-nfs
+  template:
+    metadata:
+      labels:
+        app: nginx-nfs
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+        volumeMounts:
+        - name: nfs-volume
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: nfs-volume
+        persistentVolumeClaim:
+          claimName: nfs-pvc   # 这里填你已经 Bound 的 PVC 名字
+

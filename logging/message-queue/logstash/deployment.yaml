@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: logging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+      - name: logstash
+        image: docker.io/library/logstash:7.17.10
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: config
+          mountPath: /opt/logstash/config/containers.conf
+          subPath: containers.conf
+        command:
+        - "/bin/sh"
+        - "-c"
+        - "/opt/logstash/bin/logstash -f /opt/logstash/config/containers.conf >/dev/null"
+        resources:
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+      volumes:
+      - name: config
+        configMap:
+          name: logstash-k8s-config

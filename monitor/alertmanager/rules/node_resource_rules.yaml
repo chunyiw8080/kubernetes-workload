@@ -1,0 +1,20 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  labels:
+    app: prometheus
+  name: node-resources-rules
+  namespace: monitor  
+data:
+  node_resource_rules.yml: |
+    groups:
+    - name: node-resource_rules
+      rules:
+      - alert: NodeMemoryUsageHigh
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes <= 0.5
+        for: 5m
+        labels:
+          severity: medium
+        annotations:
+          summary: "Node {{ $labels.instance }} memory usage high"
+          description: "The memory usage on node {{ $labels.instance }} is above 50% for more than 5 minutes."

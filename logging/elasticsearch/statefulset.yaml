@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: es-cluster
+  namespace: logging
+spec:
+  serviceName: elasticsearch
+  replicas: 2
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: elasticsearch
+        image: elasticsearch:7.17.8
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            cpu: 100m
+            memory: 1Gi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        ports:
+        - containerPort: 9200
+          name: tcp-9200
+          protocol: TCP
+        - containerPort: 9300
+          name: tcp-9300
+          protocol: TCP
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+        env:
+        # elasticsearch集群名字
+        - name: cluster.name
+          value: k8s-logs
+        # 每个elasticsearch实例的名字, 按statefulset的特性会是metatdata.name + -0,-1,-2的形式
+        - name: node.name
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        # 设置集群内节点发现的地址列表(如果后面增加实例数量，也需要修改这里)
+        - name: discovery.seed_hosts
+          value: "es-cluster-0.elasticsearch.logging.svc.cluster.local,es-cluster-1.elasticsearch.logging.svc.cluster.local,es-cluster-2.elasticsearch.logging.svc.cluster.local"
+        # 指定初始的主节点列表
+        - name: cluster.initial_master_nodes
+          value: "es-cluster-0,es-cluster-1,es-cluster-2"
+        # 设置Elasticsearch 容器的Java 虚拟机参数 (内存最小值和最大值)
+        - name: ES_JAVA_OPTS
+          value: "-Xms512m -Xmx512m"
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      labels:
+        app: elasticsearch
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: nfs-storage
+      resources:
+        requests:
+            storage: 5Gi

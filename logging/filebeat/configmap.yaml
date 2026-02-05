@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: logging
+  labels:
+    k8s-app: filebeat
+data:
+  filebeat.yml: |-
+    filebeat.inputs:
+    - type: container
+      paths:
+        - /var/log/containers/*.log
+      processors:
+        - add_kubernetes_metadata:
+            default_indexers.enabled: true
+            default_matchers.enabled: true
+            host: ${NODE_NAME}
+            matchers:
+            - logs_path:
+                logs_path: "/var/log/containers/"
+
+    output.elasticsearch:
+      hosts: ['elasticsearch.logging.svc.cluster.local:9200']
+      indices:
+        - index: "control-panel-%{+yyyy.MM.dd}"
+          when.or:
+            - regexp:
+                kubernetes.namespace: "kube-.*"
+            - regexp:
+                kubernetes.namespace: "calico-*"
+            - equals:
+                kubernetes.namespace: "ingress-nginx"
+        - index: "logging-%{+yyyy.MM.dd}"
+          when.equals:
+            kubernetes.namespace: "logging"
+
+        - index: "monitor-%{+yyyy.MM.dd}"
+          when.equals:
+            kubernetes.namespace: "monitor"
+        - index: "benchmark-%{+yyyy.MM.dd}"
+          when.equals:
+            kubernetes.namespace: "benchmark"
+        - index: "default-%{+yyyy.MM.dd}"
+
+
+    # output.kafka:
+    #   hosts: ["kafka.logging.svc.cluster.local:9092"]
+    #   topic: '%{[kubernetes.namespace]}'

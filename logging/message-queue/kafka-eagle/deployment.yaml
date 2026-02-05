@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-eagle
+  namespace: logging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-eagle
+  template:
+    metadata:
+      labels:
+        app: kafka-eagle
+    spec:
+      containers:
+      - image: buzhiyun/kafka-eagle:latest
+        name: kafka-eagle
+        ports:
+        - name: kafka-eagle
+          protocol: TCP
+          containerPort: 8048
+        env:
+        - name: JAVA_OPTS
+          value: "-Xms256m -Xmx512m -XX:+UseG1GC"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "200m"
+          limits:
+            memory: "1.5Gi"
+            cpu: "500m"
+        volumeMounts:
+        - mountPath: /opt/kafka-eagle/conf
+          name: conf
+      restartPolicy: Always
+      volumes:
+      - name: conf
+        configMap:
+          name: kafka-eagle-config
