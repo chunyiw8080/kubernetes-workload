@@ -1,0 +1,155 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: benchmark-k6-config
+  namespace: benchmark
+data:
+  # 目标URL
+  # 如果是以.xml为结尾的站点地图，则随机测试站点地图上提供的所有URL
+  # 如果是普通URL，则单点测试该URL
+  SITEMAP_URL: "http://target-nginx-svc.default.svc.cluster.local/"
+  # 模拟的用户数
+  VUS: "10"
+  # 测试持续时间
+  DURATION: "60s"
+  # 停顿时间
+  SLEEP_TIME: "0.5"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: benchmark-k6-script
+  namespace: benchmark
+data:
+  test.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+
+    const SITEMAP_URL = __ENV.SITEMAP_URL;
+    const SLEEP_TIME = parseFloat(__ENV.SLEEP_TIME || "1");
+
+    export function setup() {
+      let urls = [];
+
+      if (!SITEMAP_URL.endsWith('.xml')) {
+        urls = [SITEMAP_URL];
+      }
+      else {
+        let res = http.get(SITEMAP_URL);
+        let regex = /<loc>(.*?)<\/loc>/g;
+        let match;
+
+        while ((match = regex.exec(res.body)) !== null) {
+          urls.push(match[1]);
+        }
+      }
+
+      return { urls };
+    }
+
+    export default function (data) {
+      let url = data.urls[Math.floor(Math.random() * data.urls.length)];
+      let res = http.get(url);
+
+      check(res, {
+        'status is 200': (r) => r.status === 200,
+      });
+
+      sleep(SLEEP_TIME);
+    }
+
+    export const options = {
+      vus: __ENV.K6_VUS ? parseInt(__ENV.K6_VUS) : 1,
+      duration: __ENV.K6_DURATION || "10s",
+    };
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: benchmark-k6-job
+  namespace: benchmark
+spec:
+  completions: 2
+  parallelism: 2
+  backoffLimit: 0
+
+  # 最大运行时间
+  # activeDeadlineSeconds: 300
+
+  template:
+    metadata:
+      labels:
+        app: benchmark-k6-job
+    spec:
+      restartPolicy: Never
+      # 确保Pod分布在不同节点上
+      # affinity:
+      #   podAntiAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #     - labelSelector:
+      #         matchLabels:
+      #           app: benchmark-k6-job
+      #       topologyKey: kubernetes.io/hostname
+
+      # 通过拓扑分布约束确保Pod分布在不同地区的不同节点上
+      topologySpreadConstraints:
+      # 不同 region 分布
+      # 任意两个 region 中，Pod 数量差不能超过 1
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/region
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: benchmark-k6-job
+
+      # 每个 node 最多一个
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: benchmark-k6-job
+
+      containers:
+      - name: benchmark-k6-job
+        image: grafana/k6:latest
+        imagePullPolicy: IfNotPresent
+        args:
+          - "run"
+          - "--quiet"
+          - "/scripts/test.js"
+        env:
+        - name: SITEMAP_URL
+          valueFrom:
+            configMapKeyRef:
+              name: benchmark-k6-config
+              key: SITEMAP_URL
+        - name: K6_VUS
+          valueFrom:
+            configMapKeyRef:
+              name: benchmark-k6-config
+              key: VUS
+        - name: K6_DURATION
+          valueFrom:
+            configMapKeyRef:
+              name: benchmark-k6-config
+              key: DURATION
+        - name: SLEEP_TIME
+          valueFrom:
+            configMapKeyRef:
+              name: benchmark-k6-config
+              key: SLEEP_TIME
+        volumeMounts:
+        - name: script-volume
+          mountPath: /scripts
+        resources:
+          requests:
+            cpu: 500m
+          limits:
+            cpu: 1
+      volumes:
+      - name: script-volume
+        configMap:
+          name: benchmark-k6-script
+          defaultMode: 0444
